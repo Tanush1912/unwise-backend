@@ -1,0 +1,50 @@
+Copyright (c) 2024 Tanush Govind
+
+All rights reserved.
+
+This project, including all source code, design elements, styling, and documentation, 
+is proprietary and confidential.
+
+TERMS AND CONDITIONS:
+
+1. RESTRICTIONS
+   You may NOT:
+   - Use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies 
+     of this software
+   - Use the design, styling, or UI components for commercial or personal projects
+   - Remove or alter any copyright notices
+   - Create derivative works based on this codebase
+
+2. PERMITTED USES
+   You MAY:
+   - View the source code for educational purposes
+   - Reference this project in your portfolio with proper attribution
+   - Fork this repository for personal learning (not for redistribution)
+
+3. ATTRIBUTION REQUIREMENT
+   If you reference, derive inspiration from, or use any portion of this codebase 
+   in any form (including but not limited to code, design patterns, UI components, 
+   or styling), you must:
+   - Provide clear and visible attribution to the original author
+   - Include a link to this repository
+   - State that your work is "inspired by" or "based on" this project
+
+4. COMMERCIAL USE
+   Commercial use of any part of this codebase is strictly prohibited without 
+   explicit written permission from the copyright holder.
+
+5. SCOPE
+   This license applies to the entire codebase, including but not limited to:
+   - All source code files
+   - UI/UX design and styling
+   - Component architecture and patterns
+   - Documentation and README files
+
+For licensing inquiries, please contact tanush1912@gmail.com
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
