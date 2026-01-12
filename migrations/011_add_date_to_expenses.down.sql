@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_expenses_date;
+ALTER TABLE expenses DROP COLUMN IF EXISTS date;
