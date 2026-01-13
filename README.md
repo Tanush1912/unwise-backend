@@ -2,6 +2,37 @@
 
 A production-ready Splitwise alternative backend API built with Go, featuring AI-powered receipt parsing, comprehensive expense management, and advanced settlement calculations.
 
+## Overview
+
+Unwise Backend is a robust, production-grade REST API for managing shared expenses and group finances. Built with Go and following clean architecture principles, it provides a complete solution for expense tracking, settlement calculations, and financial management across multiple groups and users.
+
+### Key Highlights
+
+- **Production-Ready**: Comprehensive error handling, rate limiting, security headers, and structured logging
+- **AI-Powered**: Google Gemini integration for receipt scanning and transaction explanations
+- **Scalable Architecture**: Clean separation of concerns with handlers, services, and repositories
+- **Transaction Safety**: Atomic database operations ensuring data integrity
+- **Modern Tech Stack**: Go 1.21+, PostgreSQL, Supabase, Chi router, and structured logging with zap
+
+### Use Cases
+
+- **Travel Groups**: Split expenses during trips and vacations
+- **Household Management**: Track shared household expenses and bills
+- **Couple Finance**: Manage shared expenses between partners
+- **Friend Groups**: Split bills, dinners, and shared activities
+- **Business Expenses**: Track and settle team expenses
+
+### Architecture Philosophy
+
+The backend follows **Clean Architecture** principles with clear layer separation:
+- **Handlers**: HTTP request/response handling and validation
+- **Services**: Business logic and transaction orchestration
+- **Repositories**: Data access abstraction
+- **Models**: Domain models and DTOs
+- **Middleware**: Authentication, logging, security, and rate limiting
+
+This architecture ensures maintainability, testability, and scalability while keeping the codebase clean and organized.
+
 ## Features
 
 ### Core Functionality
