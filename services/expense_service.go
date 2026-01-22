@@ -94,6 +94,17 @@ func (s *expenseService) Create(ctx context.Context, userID string, expense *mod
 		expense.Type = models.ExpenseTypeEqual
 	}
 
+	if expense.Currency == "" {
+		group, err := s.groupRepo.GetByID(ctx, expense.GroupID)
+		if err != nil {
+			return nil, apperrors.DatabaseError("getting group for currency", err)
+		}
+		expense.Currency = group.DefaultCurrency
+		if expense.Currency == "" {
+			expense.Currency = "INR"
+		}
+	}
+
 	if len(expense.Payers) == 0 {
 		if expense.PaidByUserID == nil {
 			expense.PaidByUserID = &userID
@@ -188,6 +199,13 @@ func (s *expenseService) Update(ctx context.Context, expenseID, userID string, e
 		expense.DateISO = existingExpense.DateISO
 		expense.Date = existingExpense.Date
 		expense.Time = existingExpense.Time
+	}
+
+	if expense.ReceiptImageURL == nil {
+		expense.ReceiptImageURL = existingExpense.ReceiptImageURL
+	}
+	if len(expense.ReceiptItems) == 0 {
+		expense.ReceiptItems = existingExpense.ReceiptItems
 	}
 
 	if len(expense.Payers) == 0 {

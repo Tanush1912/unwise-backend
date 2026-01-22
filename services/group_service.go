@@ -22,6 +22,7 @@ type GroupService interface {
 	Create(ctx context.Context, userID string, name string, groupType models.GroupType, memberEmails []string) (*models.Group, error)
 	Update(ctx context.Context, groupID, userID string, name string) (*models.Group, error)
 	UpdateGroupAvatar(ctx context.Context, groupID, userID, avatarURL string) (*models.Group, error)
+	UpdateDefaultCurrency(ctx context.Context, groupID, userID, currency string) (*models.Group, error)
 	Delete(ctx context.Context, groupID, userID string) error
 	AddMember(ctx context.Context, groupID, userID, newMemberEmail string) error
 	AddPlaceholderMember(ctx context.Context, groupID, userID, name string) error
@@ -245,6 +246,22 @@ func (s *groupService) UpdateGroupAvatar(ctx context.Context, groupID, userID, a
 	return s.groupRepo.GetByID(ctx, groupID)
 }
 
+func (s *groupService) UpdateDefaultCurrency(ctx context.Context, groupID, userID, currency string) (*models.Group, error) {
+	if err := s.requireMembership(ctx, groupID, userID); err != nil {
+		return nil, err
+	}
+
+	if len(currency) != 3 {
+		return nil, apperrors.InvalidRequest("Currency code must be 3 characters")
+	}
+
+	if err := s.groupRepo.UpdateDefaultCurrency(ctx, groupID, currency); err != nil {
+		return nil, apperrors.DatabaseError("updating group default currency", err)
+	}
+
+	return s.groupRepo.GetByID(ctx, groupID)
+}
+
 func (s *groupService) Delete(ctx context.Context, groupID, userID string) error {
 	if err := s.requireMembership(ctx, groupID, userID); err != nil {
 		return err
@@ -451,6 +468,15 @@ func (s *groupService) CreateRepayment(ctx context.Context, groupID, payerID, re
 		return nil, apperrors.NotGroupMember()
 	}
 
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		return nil, apperrors.DatabaseError("getting group for currency", err)
+	}
+	currency := group.DefaultCurrency
+	if currency == "" {
+		currency = "INR"
+	}
+
 	expenseID := uuid.New().String()
 	payerIDPtr := &payerID
 	expense := &models.Expense{
@@ -458,6 +484,7 @@ func (s *groupService) CreateRepayment(ctx context.Context, groupID, payerID, re
 		GroupID:      groupID,
 		PaidByUserID: payerIDPtr,
 		TotalAmount:  amount,
+		Currency:     currency,
 		Description:  fmt.Sprintf("Repayment from %s to %s", payerID, receiverID),
 		Type:         models.ExpenseTypeEqual,
 		Category:     models.TransactionCategoryRepayment,
@@ -509,19 +536,21 @@ func (s *groupService) CreateRepayment(ctx context.Context, groupID, payerID, re
 }
 
 func (s *groupService) calculateBalances(ctx context.Context, groupID string) ([]models.Balance, error) {
-	balances, err := s.expenseRepo.GetGroupMemberBalances(ctx, groupID)
+	balancesByCurrency, err := s.expenseRepo.GetGroupMemberBalances(ctx, groupID)
 	if err != nil {
 		return nil, apperrors.DatabaseError("getting group member balances", err)
 	}
 
 	var result []models.Balance
-	for userID, balance := range balances {
-		roundedBalance := math.Round(balance*RoundingFactor) / RoundingFactor
-		if math.Abs(roundedBalance) > BalanceThreshold {
-			result = append(result, models.Balance{
-				UserID:     userID,
-				OwedAmount: roundedBalance,
-			})
+	for userID, currencyMap := range balancesByCurrency {
+		for _, balance := range currencyMap {
+			roundedBalance := math.Round(balance*RoundingFactor) / RoundingFactor
+			if math.Abs(roundedBalance) > BalanceThreshold {
+				result = append(result, models.Balance{
+					UserID:     userID,
+					OwedAmount: roundedBalance,
+				})
+			}
 		}
 	}
 
@@ -533,7 +562,7 @@ func (s *groupService) GetBalances(ctx context.Context, groupID, userID string) 
 		return nil, err
 	}
 
-	balances, err := s.expenseRepo.GetGroupMemberBalances(ctx, groupID)
+	balancesByCurrency, err := s.expenseRepo.GetGroupMemberBalances(ctx, groupID)
 	if err != nil {
 		return nil, apperrors.DatabaseError("getting group member balances", err)
 	}
@@ -552,8 +581,12 @@ func (s *groupService) GetBalances(ctx context.Context, groupID, userID string) 
 	}
 
 	userBalances := make([]models.UserBalance, 0)
-	for uID, balance := range balances {
-		roundedBalance := math.Round(balance*RoundingFactor) / RoundingFactor
+	for uID, currencyMap := range balancesByCurrency {
+		var totalBalance float64
+		for _, balance := range currencyMap {
+			totalBalance += balance
+		}
+		roundedBalance := math.Round(totalBalance*RoundingFactor) / RoundingFactor
 		owesTo := owesToMap[uID]
 		if len(owesTo) > 0 || math.Abs(roundedBalance) > BalanceThreshold {
 			userBalances = append(userBalances, models.UserBalance{
@@ -580,7 +613,7 @@ func (s *groupService) GetBalancesEdgeList(ctx context.Context, groupID, userID 
 		return nil, err
 	}
 
-	balances, err := s.expenseRepo.GetGroupMemberBalances(ctx, groupID)
+	balancesByCurrency, err := s.expenseRepo.GetGroupMemberBalances(ctx, groupID)
 	if err != nil {
 		return nil, apperrors.DatabaseError("getting group member balances", err)
 	}
@@ -590,7 +623,12 @@ func (s *groupService) GetBalancesEdgeList(ctx context.Context, groupID, userID 
 		return nil, apperrors.InternalError(fmt.Errorf("calculating settlements: %w", err))
 	}
 
-	userNetBalance := balances[userID]
+	var userNetBalance float64
+	if userCurrencies, ok := balancesByCurrency[userID]; ok {
+		for _, balance := range userCurrencies {
+			userNetBalance += balance
+		}
+	}
 	roundedBalance := math.Round(userNetBalance*RoundingFactor) / RoundingFactor
 
 	var state models.BalanceState
@@ -632,7 +670,8 @@ func (s *groupService) GetBalancesEdgeList(ctx context.Context, groupID, userID 
 				Name:      toUser.Name,
 				AvatarURL: toUser.AvatarURL,
 			},
-			Amount: settlement.Amount,
+			Amount:   settlement.Amount,
+			Currency: settlement.Currency,
 		})
 
 		if settlement.FromUserID == userID {
@@ -723,6 +762,15 @@ func (s *groupService) CreateSettlement(ctx context.Context, groupID, requesterI
 		return nil, apperrors.DatabaseError("getting to user", err)
 	}
 
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		return nil, apperrors.DatabaseError("getting group for currency", err)
+	}
+	currency := group.DefaultCurrency
+	if currency == "" {
+		currency = "INR"
+	}
+
 	expenseID := uuid.New().String()
 	fromUserIDPtr := &fromUserID
 	description := fmt.Sprintf("Payment from %s to %s", fromUser.Name, toUser.Name)
@@ -732,6 +780,7 @@ func (s *groupService) CreateSettlement(ctx context.Context, groupID, requesterI
 		GroupID:      groupID,
 		PaidByUserID: fromUserIDPtr,
 		TotalAmount:  amount,
+		Currency:     currency,
 		Description:  description,
 		Type:         models.ExpenseTypeEqual,
 		Category:     models.TransactionCategoryPayment,

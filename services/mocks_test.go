@@ -8,7 +8,7 @@ import (
 )
 
 type mockExpenseRepo struct {
-	balances map[string]float64
+	balances map[string]map[string]float64
 }
 
 func (m *mockExpenseRepo) GetByID(ctx context.Context, id string) (*models.Expense, error) {
@@ -26,8 +26,8 @@ func (m *mockExpenseRepo) GetRecentTransactionsForUser(ctx context.Context, user
 func (m *mockExpenseRepo) GetUserBalanceInGroup(ctx context.Context, groupID, userID string) (float64, error) {
 	return 0, nil
 }
-func (m *mockExpenseRepo) GetUserTotalBalance(ctx context.Context, userID string) (float64, float64, float64, error) {
-	return 0, 0, 0, nil
+func (m *mockExpenseRepo) GetUserTotalBalance(ctx context.Context, userID string) ([]models.CurrencyAmount, []models.CurrencyAmount, []models.CurrencyAmount, error) {
+	return nil, nil, nil, nil
 }
 func (m *mockExpenseRepo) Create(ctx context.Context, expense *models.Expense) error { return nil }
 func (m *mockExpenseRepo) Update(ctx context.Context, expense *models.Expense) error { return nil }
@@ -71,7 +71,7 @@ func (m *mockExpenseRepo) GetPayersByExpenseIDs(ctx context.Context, expenseIDs 
 func (m *mockExpenseRepo) GetGroupBalancesByUserID(ctx context.Context, userID string, groupIDs []string) (map[string]float64, error) {
 	return nil, nil
 }
-func (m *mockExpenseRepo) GetGroupMemberBalances(ctx context.Context, groupID string) (map[string]float64, error) {
+func (m *mockExpenseRepo) GetGroupMemberBalances(ctx context.Context, groupID string) (map[string]map[string]float64, error) {
 	return m.balances, nil
 }
 func (m *mockExpenseRepo) GetGroupTotalSpend(ctx context.Context, groupID string) (float64, error) {
@@ -107,6 +107,9 @@ func (m *mockGroupRepo) GetGroupsWithLastActivity(ctx context.Context, userID st
 func (m *mockGroupRepo) Create(ctx context.Context, group *models.Group) error { return nil }
 func (m *mockGroupRepo) Update(ctx context.Context, group *models.Group) error { return nil }
 func (m *mockGroupRepo) UpdateAvatarURL(ctx context.Context, groupID, avatarURL string) error {
+	return nil
+}
+func (m *mockGroupRepo) UpdateDefaultCurrency(ctx context.Context, groupID, currency string) error {
 	return nil
 }
 func (m *mockGroupRepo) Delete(ctx context.Context, id string) error { return nil }

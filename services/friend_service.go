@@ -110,7 +110,7 @@ func (s *friendService) GetFriendsWithBalances(ctx context.Context, userID strin
 		return nil, apperrors.DatabaseError("getting user groups", err)
 	}
 
-	pairwiseBalances := make(map[string]map[string]float64)
+	pairwiseBalances := make(map[string]map[string]map[string]float64)
 
 	for _, group := range userGroups {
 		settlements, err := s.settlementService.CalculateSettlements(ctx, group.ID, userID)
@@ -123,16 +123,22 @@ func (s *friendService) GetFriendsWithBalances(ctx context.Context, userID strin
 			if settlement.ToUserID == userID && friendSet[settlement.FromUserID] {
 				friendID := settlement.FromUserID
 				if pairwiseBalances[friendID] == nil {
-					pairwiseBalances[friendID] = make(map[string]float64)
+					pairwiseBalances[friendID] = make(map[string]map[string]float64)
 				}
-				pairwiseBalances[friendID][group.ID] += settlement.Amount
+				if pairwiseBalances[friendID][group.ID] == nil {
+					pairwiseBalances[friendID][group.ID] = make(map[string]float64)
+				}
+				pairwiseBalances[friendID][group.ID][settlement.Currency] += settlement.Amount
 			}
 			if settlement.FromUserID == userID && friendSet[settlement.ToUserID] {
 				friendID := settlement.ToUserID
 				if pairwiseBalances[friendID] == nil {
-					pairwiseBalances[friendID] = make(map[string]float64)
+					pairwiseBalances[friendID] = make(map[string]map[string]float64)
 				}
-				pairwiseBalances[friendID][group.ID] -= settlement.Amount
+				if pairwiseBalances[friendID][group.ID] == nil {
+					pairwiseBalances[friendID][group.ID] = make(map[string]float64)
+				}
+				pairwiseBalances[friendID][group.ID][settlement.Currency] -= settlement.Amount
 			}
 		}
 	}
@@ -143,7 +149,8 @@ func (s *friendService) GetFriendsWithBalances(ctx context.Context, userID strin
 		friendGroupBalances := pairwiseBalances[friend.ID]
 		commonGroups := make([]models.DashboardGroup, 0)
 		groupBalances := make([]models.FriendGroupBalance, 0)
-		var totalNetBalance float64
+
+		currencyTotals := make(map[string]float64)
 
 		for _, group := range userGroups {
 			isMember := false
@@ -161,14 +168,32 @@ func (s *friendService) GetFriendsWithBalances(ctx context.Context, userID strin
 					AvatarURL: group.AvatarURL,
 				})
 
-				if balance, exists := friendGroupBalances[group.ID]; exists {
-					groupBalances = append(groupBalances, models.FriendGroupBalance{
-						GroupID:   group.ID,
-						GroupName: group.Name,
-						Amount:    math.Round(balance*RoundingFactor) / RoundingFactor,
-					})
-					totalNetBalance += balance
+				if groupCurrencyBalances, exists := friendGroupBalances[group.ID]; exists {
+					for currency, balance := range groupCurrencyBalances {
+						groupBalances = append(groupBalances, models.FriendGroupBalance{
+							GroupID:   group.ID,
+							GroupName: group.Name,
+							Currency:  currency,
+							Amount:    math.Round(balance*RoundingFactor) / RoundingFactor,
+						})
+						currencyTotals[currency] += balance
+					}
 				}
+			}
+		}
+
+		balances := make([]models.CurrencyAmount, 0)
+		var legacyNetBalance float64
+		for currency, amount := range currencyTotals {
+			roundedAmount := math.Round(amount*RoundingFactor) / RoundingFactor
+			if math.Abs(roundedAmount) > BalanceThreshold {
+				balances = append(balances, models.CurrencyAmount{
+					Currency: currency,
+					Amount:   roundedAmount,
+				})
+			}
+			if currency == "INR" {
+				legacyNetBalance = roundedAmount
 			}
 		}
 
@@ -179,7 +204,8 @@ func (s *friendService) GetFriendsWithBalances(ctx context.Context, userID strin
 				AvatarURL: friend.AvatarURL,
 			},
 			Email:         friend.Email,
-			NetBalance:    math.Round(totalNetBalance*RoundingFactor) / RoundingFactor,
+			NetBalance:    legacyNetBalance,
+			Balances:      balances,
 			Groups:        commonGroups,
 			GroupBalances: groupBalances,
 		})

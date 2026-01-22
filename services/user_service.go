@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -65,7 +64,6 @@ func (s *userService) UpdateAvatar(ctx context.Context, userID, avatarURL string
 		return nil, apperrors.DatabaseError("updating user avatar", err)
 	}
 
-	// Update Supabase Auth metadata
 	if s.supabaseURL != "" && s.serviceRoleKey != "" {
 		go func() {
 			err := s.updateSupabaseMetadata(userID, avatarURL)
@@ -119,18 +117,17 @@ func (s *userService) updateSupabaseMetadata(userID, avatarURL string) error {
 
 func (s *userService) DeleteAccount(ctx context.Context, userID string) error {
 	zap.L().Info("Attempting account deletion", zap.String("user_id", userID))
-	netBalance, totalOwe, totalOwed, err := s.expenseRepo.GetUserTotalBalance(ctx, userID)
+	totalBalances, oweBalances, owedBalances, err := s.expenseRepo.GetUserTotalBalance(ctx, userID)
 	if err != nil {
 		zap.L().Error("Failed to check user balance before deletion", zap.String("user_id", userID), zap.Error(err))
 		return apperrors.DatabaseError("checking user balance before deletion", err)
 	}
 
-	if math.Abs(totalOwe) > BalanceThreshold || math.Abs(totalOwed) > BalanceThreshold || math.Abs(netBalance) > BalanceThreshold {
+	hasBalance := len(totalBalances) > 0 || len(oweBalances) > 0 || len(owedBalances) > 0
+	if hasBalance {
 		zap.L().Warn("Account deletion rejected: active balance",
 			zap.String("user_id", userID),
-			zap.Float64("net_balance", netBalance),
-			zap.Float64("total_owe", totalOwe),
-			zap.Float64("total_owed", totalOwed))
+			zap.Int("num_currencies_with_balance", len(totalBalances)))
 		return apperrors.CannotDeleteAccountWithBalance()
 	}
 

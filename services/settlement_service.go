@@ -56,11 +56,31 @@ func (s *settlementService) CalculateSettlements(ctx context.Context, groupID, u
 		return nil, err
 	}
 
-	balances, err := s.expenseRepo.GetGroupMemberBalances(ctx, groupID)
+	balancesByCurrency, err := s.expenseRepo.GetGroupMemberBalances(ctx, groupID)
 	if err != nil {
 		return nil, apperrors.DatabaseError("getting group member balances", err)
 	}
+	currencyBalances := make(map[string]map[string]float64)
+	for userID, currencyMap := range balancesByCurrency {
+		for currency, balance := range currencyMap {
+			if currencyBalances[currency] == nil {
+				currencyBalances[currency] = make(map[string]float64)
+			}
+			currencyBalances[currency][userID] = balance
+		}
+	}
 
+	var allSettlements []models.Settlement
+
+	for currency, userBalances := range currencyBalances {
+		settlements := s.calculateSettlementsForCurrency(userBalances, currency)
+		allSettlements = append(allSettlements, settlements...)
+	}
+
+	return allSettlements, nil
+}
+
+func (s *settlementService) calculateSettlementsForCurrency(balances map[string]float64, currency string) []models.Settlement {
 	creditorHeap := &balanceHeap{}
 	debtorHeap := &balanceHeap{}
 
@@ -86,6 +106,7 @@ func (s *settlementService) CalculateSettlements(ctx context.Context, groupID, u
 				FromUserID: debtor.userID,
 				ToUserID:   creditor.userID,
 				Amount:     roundedAmount,
+				Currency:   currency,
 			})
 		}
 
@@ -100,5 +121,5 @@ func (s *settlementService) CalculateSettlements(ctx context.Context, groupID, u
 		}
 	}
 
-	return settlements, nil
+	return settlements
 }

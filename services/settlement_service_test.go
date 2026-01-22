@@ -10,38 +10,49 @@ import (
 func TestCalculateSettlements(t *testing.T) {
 	tests := []struct {
 		name     string
-		balances map[string]float64
+		balances map[string]map[string]float64 
 		expected []models.Settlement
 	}{
 		{
 			name: "Simple Case",
-			balances: map[string]float64{
-				"A": 10.00,
-				"B": -10.00,
+			balances: map[string]map[string]float64{
+				"A": {"INR": 10.00},
+				"B": {"INR": -10.00},
 			},
 			expected: []models.Settlement{
-				{FromUserID: "B", ToUserID: "A", Amount: 10.00},
+				{FromUserID: "B", ToUserID: "A", Amount: 10.00, Currency: "INR"},
 			},
 		},
 		{
 			name: "Three People Equal Split residue",
-			balances: map[string]float64{
-				"A": 6.67,
-				"B": -3.33,
-				"C": -3.34,
+			balances: map[string]map[string]float64{
+				"A": {"INR": 6.67},
+				"B": {"INR": -3.33},
+				"C": {"INR": -3.34},
 			},
 			expected: []models.Settlement{
-				{FromUserID: "C", ToUserID: "A", Amount: 3.34},
-				{FromUserID: "B", ToUserID: "A", Amount: 3.33},
+				{FromUserID: "C", ToUserID: "A", Amount: 3.34, Currency: "INR"},
+				{FromUserID: "B", ToUserID: "A", Amount: 3.33, Currency: "INR"},
 			},
 		},
 		{
 			name: "Floating point precision residue",
-			balances: map[string]float64{
-				"A": 0.0000000000000001,
-				"B": -0.0000000000000001,
+			balances: map[string]map[string]float64{
+				"A": {"INR": 0.0000000000000001},
+				"B": {"INR": -0.0000000000000001},
 			},
 			expected: []models.Settlement{},
+		},
+		{
+			name: "Multi-currency settlements",
+			balances: map[string]map[string]float64{
+				"A": {"INR": 100.00, "USD": 50.00},
+				"B": {"INR": -100.00, "USD": -50.00},
+			},
+			expected: []models.Settlement{
+				{FromUserID: "B", ToUserID: "A", Amount: 100.00, Currency: "INR"},
+				{FromUserID: "B", ToUserID: "A", Amount: 50.00, Currency: "USD"},
+			},
 		},
 	}
 
@@ -61,13 +72,27 @@ func TestCalculateSettlements(t *testing.T) {
 				t.Errorf("expected %d settlements, got %d", len(tt.expected), len(settlements))
 			}
 
-			for i, s := range settlements {
-				if i >= len(tt.expected) {
-					break
+			expectedMap := make(map[string]models.Settlement)
+			for _, e := range tt.expected {
+				key := e.FromUserID + "->" + e.ToUserID + ":" + e.Currency
+				expectedMap[key] = e
+			}
+
+			for _, s := range settlements {
+				key := s.FromUserID + "->" + s.ToUserID + ":" + s.Currency
+				expected, ok := expectedMap[key]
+				if !ok {
+					t.Errorf("unexpected settlement: %+v", s)
+					continue
 				}
-				if s.FromUserID != tt.expected[i].FromUserID || s.ToUserID != tt.expected[i].ToUserID || math.Abs(s.Amount-tt.expected[i].Amount) > 0.001 {
-					t.Errorf("settlement %d mismatch: got %+v, want %+v", i, s, tt.expected[i])
+				if math.Abs(s.Amount-expected.Amount) > 0.001 {
+					t.Errorf("settlement amount mismatch: got %+v, want %+v", s, expected)
 				}
+				delete(expectedMap, key)
+			}
+
+			for _, remaining := range expectedMap {
+				t.Errorf("missing expected settlement: %+v", remaining)
 			}
 		})
 	}

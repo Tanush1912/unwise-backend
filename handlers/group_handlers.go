@@ -36,6 +36,10 @@ type AddPlaceholderMemberRequest struct {
 	Name string `json:"name"`
 }
 
+type UpdateDefaultCurrencyRequest struct {
+	Currency string `json:"currency"`
+}
+
 func (h *Handlers) GetGroups(w http.ResponseWriter, r *http.Request) {
 	userID, err := getUserID(r)
 	if err != nil {
@@ -435,4 +439,40 @@ func (h *Handlers) ExportGroupCSV(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func (h *Handlers) UpdateDefaultCurrency(w http.ResponseWriter, r *http.Request) {
+	userID, err := getUserID(r)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+
+	groupID := chi.URLParam(r, "groupID")
+	if groupID == "" {
+		handleError(w, apperrors.MissingRequiredField("Group ID"))
+		return
+	}
+
+	var req UpdateDefaultCurrencyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		handleError(w, apperrors.InvalidRequest("Invalid request body. Please provide valid JSON."))
+		return
+	}
+
+	currency := strings.TrimSpace(strings.ToUpper(req.Currency))
+	if currency == "" {
+		handleError(w, apperrors.MissingRequiredField("Currency"))
+		return
+	}
+
+	group, err := h.groupService.UpdateDefaultCurrency(r.Context(), groupID, userID, currency)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+
+	zap.L().Info("Group default currency updated", zap.String("group_id", groupID), zap.String("currency", currency))
+
+	respondJSON(w, http.StatusOK, group)
 }

@@ -38,7 +38,7 @@ func TestExpenseValidation(t *testing.T) {
 			splits: []models.ExpenseSplit{
 				{UserID: "A", Amount: 3.33},
 				{UserID: "B", Amount: 3.33},
-				{UserID: "C", Amount: 3.33}, // Sum 9.99
+				{UserID: "C", Amount: 3.33}, 
 			},
 			shouldError: true,
 		},
@@ -48,7 +48,7 @@ func TestExpenseValidation(t *testing.T) {
 				TotalAmount: 10.00,
 				Payers: []models.ExpensePayer{
 					{UserID: "A", AmountPaid: 5.00},
-					{UserID: "B", AmountPaid: 4.99}, // Sum 9.99
+					{UserID: "B", AmountPaid: 4.99}, 
 				},
 			},
 			splits: []models.ExpenseSplit{
