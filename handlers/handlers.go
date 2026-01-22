@@ -84,6 +84,7 @@ func (h *Handlers) RegisterRoutes(r chi.Router) {
 		r.Get("/{groupID}", h.GetGroup)
 		r.Put("/{groupID}", h.UpdateGroup)
 		r.Delete("/{groupID}", h.DeleteGroup)
+		r.Put("/{groupID}/currency", h.UpdateDefaultCurrency)
 		r.Post("/{groupID}/members", h.AddMember)
 		r.Post("/{groupID}/placeholders", h.AddPlaceholderMember)
 		r.Delete("/{groupID}/members/{userID}", h.RemoveMember)

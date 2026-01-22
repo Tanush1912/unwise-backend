@@ -129,7 +129,7 @@ func (h *Handlers) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	commentID := chi.URLParam(r, "commentID")
-	emoji := r.URL.Query().Get("emoji") // Pass emoji as query param for delete
+	emoji := r.URL.Query().Get("emoji") 
 
 	if emoji == "" {
 		handleError(w, apperrors.MissingRequiredField("Emoji query param"))

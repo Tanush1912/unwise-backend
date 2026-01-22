@@ -48,6 +48,7 @@ func main() {
 	expenseRepo := repository.NewExpenseRepository(db)
 	friendRepo := repository.NewFriendRepository(db)
 	commentRepo := repository.NewCommentRepository(db)
+	currencyRepo := repository.NewCurrencyRepository(db)
 
 	settlementService := services.NewSettlementService(expenseRepo, groupRepo)
 	groupService := services.NewGroupService(groupRepo, userRepo, expenseRepo, settlementService, db)
@@ -89,6 +90,7 @@ func main() {
 
 	importService := services.NewImportService(groupRepo, userRepo, expenseRepo, db)
 	importHandlers := handlers.NewImportHandlers(importService)
+	currencyHandlers := handlers.NewCurrencyHandlers(currencyRepo)
 
 	r := chi.NewRouter()
 
@@ -129,6 +131,7 @@ func main() {
 
 		h.RegisterRoutes(r)
 		importHandlers.RegisterRoutes(r)
+		r.Get("/currencies", currencyHandlers.GetCurrencies)
 	})
 
 	srv := &http.Server{

@@ -16,6 +16,7 @@ type GroupRepository interface {
 	Create(ctx context.Context, group *models.Group) error
 	Update(ctx context.Context, group *models.Group) error
 	UpdateAvatarURL(ctx context.Context, groupID string, avatarURL string) error
+	UpdateDefaultCurrency(ctx context.Context, groupID string, currency string) error
 	Delete(ctx context.Context, id string) error
 	AddMember(ctx context.Context, groupID, userID string) error
 	RemoveMember(ctx context.Context, groupID, userID string) error
@@ -48,10 +49,10 @@ func (r *groupRepository) getQuerier() database.Querier {
 
 func (r *groupRepository) GetByID(ctx context.Context, id string) (*models.Group, error) {
 	var group models.Group
-	query := `SELECT id, name, type, avatar_url, created_at, updated_at FROM groups WHERE id = $1`
+	query := `SELECT id, name, type, default_currency, avatar_url, created_at, updated_at FROM groups WHERE id = $1`
 
 	err := r.getQuerier().QueryRow(ctx, query, id).Scan(
-		&group.ID, &group.Name, &group.Type, &group.AvatarURL, &group.CreatedAt, &group.UpdatedAt,
+		&group.ID, &group.Name, &group.Type, &group.DefaultCurrency, &group.AvatarURL, &group.CreatedAt, &group.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("getting group by id: %w", err)
@@ -71,6 +72,7 @@ func (r *groupRepository) GetByUserID(ctx context.Context, userID string) ([]mod
 	          g.id, 
 	          g.name, 
 	          g.type, 
+	          g.default_currency,
 	          g.avatar_url,
 	          g.created_at, 
 	          g.updated_at
@@ -91,7 +93,7 @@ func (r *groupRepository) GetByUserID(ctx context.Context, userID string) ([]mod
 
 	for rows.Next() {
 		var group models.Group
-		if err := rows.Scan(&group.ID, &group.Name, &group.Type, &group.AvatarURL, &group.CreatedAt, &group.UpdatedAt); err != nil {
+		if err := rows.Scan(&group.ID, &group.Name, &group.Type, &group.DefaultCurrency, &group.AvatarURL, &group.CreatedAt, &group.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanning group: %w", err)
 		}
 		group.Members = []models.User{}
@@ -169,6 +171,15 @@ func (r *groupRepository) UpdateAvatarURL(ctx context.Context, groupID string, a
 	_, err := r.getQuerier().Exec(ctx, query, avatarURL, groupID)
 	if err != nil {
 		return fmt.Errorf("updating group avatar: %w", err)
+	}
+	return nil
+}
+
+func (r *groupRepository) UpdateDefaultCurrency(ctx context.Context, groupID string, currency string) error {
+	query := `UPDATE groups SET default_currency = $1, updated_at = NOW() WHERE id = $2`
+	_, err := r.getQuerier().Exec(ctx, query, currency, groupID)
+	if err != nil {
+		return fmt.Errorf("updating group default currency: %w", err)
 	}
 	return nil
 }

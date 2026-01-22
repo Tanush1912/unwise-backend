@@ -17,6 +17,17 @@ type User struct {
 	Balance       float64    `json:"balance,omitempty"`
 }
 
+type Currency struct {
+	Code   string `json:"code" db:"code"`
+	Name   string `json:"name" db:"name"`
+	Symbol string `json:"symbol" db:"symbol"`
+}
+
+type CurrencyAmount struct {
+	Currency string  `json:"currency"`
+	Amount   float64 `json:"amount"`
+}
+
 type GroupType string
 
 const (
@@ -27,17 +38,18 @@ const (
 )
 
 type Group struct {
-	ID          string    `json:"id" db:"id"`
-	Name        string    `json:"name" db:"name"`
-	Type        GroupType `json:"type" db:"type"`
-	AvatarURL   *string   `json:"avatar_url,omitempty" db:"avatar_url"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
-	MemberCount int       `json:"member_count,omitempty" db:"member_count"`
-	Members     []User    `json:"members,omitempty"`
-	Balances    []Balance `json:"balances,omitempty"`
-	TotalSpend  float64   `json:"total_spend,omitempty"`
-	HasDebts    bool      `json:"has_debts,omitempty"`
+	ID              string    `json:"id" db:"id"`
+	Name            string    `json:"name" db:"name"`
+	Type            GroupType `json:"type" db:"type"`
+	DefaultCurrency string    `json:"default_currency" db:"default_currency"`
+	AvatarURL       *string   `json:"avatar_url,omitempty" db:"avatar_url"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
+	MemberCount     int       `json:"member_count,omitempty" db:"member_count"`
+	Members         []User    `json:"members,omitempty"`
+	Balances        []Balance `json:"balances,omitempty"`
+	TotalSpend      float64   `json:"total_spend,omitempty"`
+	HasDebts        bool      `json:"has_debts,omitempty"`
 }
 
 type TransactionCategory string
@@ -62,6 +74,7 @@ type Expense struct {
 	GroupID         string              `json:"group_id" db:"group_id"`
 	PaidByUserID    *string             `json:"paid_by_user_id,omitempty" db:"paid_by_user_id"`
 	TotalAmount     float64             `json:"total_amount" db:"total_amount"`
+	Currency        string              `json:"currency" db:"currency"`
 	Description     string              `json:"description" db:"description"`
 	ReceiptImageURL *string             `json:"receipt_image_url,omitempty" db:"receipt_image_url"`
 	Type            ExpenseType         `json:"split_method" db:"type"`
@@ -198,6 +211,7 @@ type DebtEdge struct {
 	FromUser UserInfo `json:"from_user"`
 	ToUser   UserInfo `json:"to_user"`
 	Amount   float64  `json:"amount"`
+	Currency string   `json:"currency"`
 }
 
 type UserInfo struct {
@@ -215,6 +229,7 @@ type Settlement struct {
 	FromUserID string  `json:"from_user_id"`
 	ToUserID   string  `json:"to_user_id"`
 	Amount     float64 `json:"amount"`
+	Currency   string  `json:"currency"`
 }
 
 type ReceiptParseResult struct {
@@ -250,6 +265,9 @@ type DashboardMetrics struct {
 	TotalNetBalance float64 `json:"total_net_balance"`
 	TotalYouOwe     float64 `json:"total_you_owe"`
 	TotalYouAreOwed float64 `json:"total_you_are_owed"`
+	TotalBalances []CurrencyAmount `json:"total_balances,omitempty"`
+	BalancesOwed  []CurrencyAmount `json:"balances_owed,omitempty"`
+	BalancesOwe   []CurrencyAmount `json:"balances_owe,omitempty"`
 }
 
 type DashboardGroup struct {
@@ -298,13 +316,15 @@ type Friend struct {
 type FriendGroupBalance struct {
 	GroupID   string  `json:"group_id"`
 	GroupName string  `json:"group_name"`
+	Currency  string  `json:"currency"`
 	Amount    float64 `json:"amount"`
 }
 
 type FriendWithBalance struct {
 	UserInfo
 	Email         string               `json:"email"`
-	NetBalance    float64              `json:"net_balance"`
+	NetBalance    float64              `json:"net_balance"`        
+	Balances      []CurrencyAmount     `json:"balances,omitempty"` 
 	Groups        []DashboardGroup     `json:"groups"`
 	GroupBalances []FriendGroupBalance `json:"group_balances"`
 }

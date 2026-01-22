@@ -17,7 +17,7 @@ type ExpenseRepository interface {
 	GetTransactionsByGroupID(ctx context.Context, groupID string) ([]models.Transaction, error)
 	GetRecentTransactionsForUser(ctx context.Context, userID string, limit int) ([]models.Expense, error)
 	GetUserBalanceInGroup(ctx context.Context, groupID, userID string) (float64, error)
-	GetUserTotalBalance(ctx context.Context, userID string) (float64, float64, float64, error)
+	GetUserTotalBalance(ctx context.Context, userID string) ([]models.CurrencyAmount, []models.CurrencyAmount, []models.CurrencyAmount, error)
 	Create(ctx context.Context, expense *models.Expense) error
 	Update(ctx context.Context, expense *models.Expense) error
 	UpdateExplanation(ctx context.Context, id string, explanation string) error
@@ -36,7 +36,7 @@ type ExpenseRepository interface {
 	GetSplitsByExpenseIDs(ctx context.Context, expenseIDs []string) (map[string][]models.ExpenseSplit, error)
 	GetPayersByExpenseIDs(ctx context.Context, expenseIDs []string) (map[string][]models.ExpensePayer, error)
 	GetGroupBalancesByUserID(ctx context.Context, userID string, groupIDs []string) (map[string]float64, error)
-	GetGroupMemberBalances(ctx context.Context, groupID string) (map[string]float64, error)
+	GetGroupMemberBalances(ctx context.Context, groupID string) (map[string]map[string]float64, error)
 	GetGroupTotalSpend(ctx context.Context, groupID string) (float64, error)
 	GetPairwiseBalances(ctx context.Context, userID, friendID string, groupIDs []string) (map[string]float64, error)
 	GetPairwiseBalancesAllFriends(ctx context.Context, userID string) (map[string]map[string]float64, error)
@@ -66,13 +66,13 @@ func (r *expenseRepository) getQuerier() database.Querier {
 
 func (r *expenseRepository) GetByID(ctx context.Context, id string) (*models.Expense, error) {
 	var expense models.Expense
-	query := `SELECT id, group_id, paid_by_user_id, total_amount, description, 
+	query := `SELECT id, group_id, paid_by_user_id, total_amount, currency, description, 
 	          receipt_image_url, type, category, tax, cgst, sgst, service_charge, explanation, created_at, updated_at, 
 	          transaction_timestamp, date_only::TEXT, time_only::TEXT
 	          FROM expenses WHERE id = $1`
 
 	err := r.getQuerier().QueryRow(ctx, query, id).Scan(
-		&expense.ID, &expense.GroupID, &expense.PaidByUserID, &expense.TotalAmount,
+		&expense.ID, &expense.GroupID, &expense.PaidByUserID, &expense.TotalAmount, &expense.Currency,
 		&expense.Description, &expense.ReceiptImageURL, &expense.Type, &expense.Category,
 		&expense.Tax, &expense.CGST, &expense.SGST, &expense.ServiceCharge, &expense.Explanation,
 		&expense.CreatedAt, &expense.UpdatedAt, &expense.DateISO, &expense.Date, &expense.Time,
@@ -102,7 +102,7 @@ func (r *expenseRepository) GetByID(ctx context.Context, id string) (*models.Exp
 }
 
 func (r *expenseRepository) GetByGroupID(ctx context.Context, groupID string) ([]models.Expense, error) {
-	query := `SELECT id, group_id, paid_by_user_id, total_amount, description,
+	query := `SELECT id, group_id, paid_by_user_id, total_amount, currency, description,
 	          receipt_image_url, type, category, tax, cgst, sgst, service_charge, explanation, created_at, updated_at, 
 	          transaction_timestamp, date_only::TEXT, time_only::TEXT
 	          FROM expenses WHERE group_id = $1
@@ -115,10 +115,11 @@ func (r *expenseRepository) GetByGroupID(ctx context.Context, groupID string) ([
 	defer rows.Close()
 
 	var expenses []models.Expense
+	expenseIDs := make([]string, 0)
 	for rows.Next() {
 		var expense models.Expense
 		if err := rows.Scan(
-			&expense.ID, &expense.GroupID, &expense.PaidByUserID, &expense.TotalAmount,
+			&expense.ID, &expense.GroupID, &expense.PaidByUserID, &expense.TotalAmount, &expense.Currency,
 			&expense.Description, &expense.ReceiptImageURL, &expense.Type, &expense.Category,
 			&expense.Tax, &expense.CGST, &expense.SGST, &expense.ServiceCharge, &expense.Explanation,
 			&expense.CreatedAt, &expense.UpdatedAt, &expense.DateISO, &expense.Date, &expense.Time,
@@ -126,6 +127,48 @@ func (r *expenseRepository) GetByGroupID(ctx context.Context, groupID string) ([
 			return nil, fmt.Errorf("scanning expense: %w", err)
 		}
 		expenses = append(expenses, expense)
+		expenseIDs = append(expenseIDs, expense.ID)
+	}
+
+	if len(expenseIDs) > 0 {
+		allSplits, err := r.GetSplitsByExpenseIDs(ctx, expenseIDs)
+		if err != nil {
+			return nil, fmt.Errorf("batch getting splits: %w", err)
+		}
+
+		allPayers, err := r.GetPayersByExpenseIDs(ctx, expenseIDs)
+		if err != nil {
+			return nil, fmt.Errorf("batch getting payers: %w", err)
+		}
+
+		allReceiptItems := make(map[string][]models.ReceiptItem)
+		for _, expenseID := range expenseIDs {
+			items, err := r.GetReceiptItems(ctx, expenseID)
+			if err != nil {
+				return nil, fmt.Errorf("getting receipt items for expense %s: %w", expenseID, err)
+			}
+			allReceiptItems[expenseID] = items
+		}
+
+		for i := range expenses {
+			if splits := allSplits[expenses[i].ID]; splits != nil {
+				expenses[i].Splits = splits
+			} else {
+				expenses[i].Splits = []models.ExpenseSplit{}
+			}
+
+			if payers := allPayers[expenses[i].ID]; payers != nil {
+				expenses[i].Payers = payers
+			} else {
+				expenses[i].Payers = []models.ExpensePayer{}
+			}
+
+			if items := allReceiptItems[expenses[i].ID]; items != nil {
+				expenses[i].ReceiptItems = items
+			} else {
+				expenses[i].ReceiptItems = []models.ReceiptItem{}
+			}
+		}
 	}
 
 	return expenses, nil
@@ -137,12 +180,12 @@ func (r *expenseRepository) Create(ctx context.Context, expense *models.Expense)
 		category = models.TransactionCategoryExpense
 	}
 
-	query := `INSERT INTO expenses (id, group_id, paid_by_user_id, total_amount, description,
+	query := `INSERT INTO expenses (id, group_id, paid_by_user_id, total_amount, currency, description,
 	          receipt_image_url, type, category, tax, cgst, sgst, service_charge, created_at, updated_at, transaction_timestamp, date_only, time_only)
-	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW(), $13, $14, $15)`
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW(), $14, $15, $16)`
 
 	_, err := r.getQuerier().Exec(ctx, query,
-		expense.ID, expense.GroupID, expense.PaidByUserID, expense.TotalAmount,
+		expense.ID, expense.GroupID, expense.PaidByUserID, expense.TotalAmount, expense.Currency,
 		expense.Description, expense.ReceiptImageURL, expense.Type, category,
 		expense.Tax, expense.CGST, expense.SGST, expense.ServiceCharge, expense.DateISO, expense.Date, expense.Time,
 	)
@@ -365,7 +408,7 @@ func (r *expenseRepository) GetTransactionsByGroupID(ctx context.Context, groupI
 
 		err := rows.Scan(
 			&t.ID, &t.GroupID, &t.PaidByUserID, &t.TotalAmount,
-			&t.Description, &t.ReceiptImageURL, &t.Expense.Type, &t.Category,
+			&t.Expense.Description, &t.ReceiptImageURL, &t.Expense.Type, &t.Category,
 			&t.Tax, &t.CGST, &t.SGST, &t.ServiceCharge, &t.Explanation,
 			&t.CreatedAt, &t.UpdatedAt, &t.DateISO, &t.Date, &t.Time,
 			&userID, &userEmail, &userName, &userAvatarURL,
@@ -522,33 +565,54 @@ func (r *expenseRepository) GetUserBalanceInGroup(ctx context.Context, groupID, 
 	return balance, nil
 }
 
-func (r *expenseRepository) GetUserTotalBalance(ctx context.Context, userID string) (float64, float64, float64, error) {
+func (r *expenseRepository) GetUserTotalBalance(ctx context.Context, userID string) ([]models.CurrencyAmount, []models.CurrencyAmount, []models.CurrencyAmount, error) {
 	query := `
-		WITH group_nets AS (
+		WITH group_currency_nets AS (
 			SELECT 
 				e.group_id,
+				e.currency,
 				COALESCE(SUM(p.amount_paid), 0) - COALESCE(SUM(s.amount), 0) as balance
 			FROM expenses e
 			INNER JOIN group_members gm ON e.group_id = gm.group_id
 			LEFT JOIN expense_payers p ON e.id = p.expense_id AND p.user_id = $1
 			LEFT JOIN expense_splits s ON e.id = s.expense_id AND s.user_id = $1
 			WHERE gm.user_id = $1
-			GROUP BY e.group_id
+			GROUP BY e.group_id, e.currency
 		)
 		SELECT 
+			currency,
 			COALESCE(SUM(balance), 0) as total_net,
 			COALESCE(SUM(CASE WHEN balance < -0.01 THEN ABS(balance) ELSE 0 END), 0) as total_owe,
 			COALESCE(SUM(CASE WHEN balance > 0.01 THEN balance ELSE 0 END), 0) as total_owed
-		FROM group_nets
+		FROM group_currency_nets
+		GROUP BY currency
 	`
 
-	var totalNet, totalOwe, totalOwed float64
-	err := r.getQuerier().QueryRow(ctx, query, userID).Scan(&totalNet, &totalOwe, &totalOwed)
+	rows, err := r.getQuerier().Query(ctx, query, userID)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("getting user total balance: %w", err)
+		return nil, nil, nil, fmt.Errorf("getting user total balance: %w", err)
+	}
+	defer rows.Close()
+
+	var totalBalances, oweBalances, owedBalances []models.CurrencyAmount
+	for rows.Next() {
+		var currency string
+		var totalNet, totalOwe, totalOwed float64
+		if err := rows.Scan(&currency, &totalNet, &totalOwe, &totalOwed); err != nil {
+			return nil, nil, nil, fmt.Errorf("scanning balance row: %w", err)
+		}
+		if math.Abs(totalNet) > 0.01 {
+			totalBalances = append(totalBalances, models.CurrencyAmount{Currency: currency, Amount: totalNet})
+		}
+		if totalOwe > 0.01 {
+			oweBalances = append(oweBalances, models.CurrencyAmount{Currency: currency, Amount: totalOwe})
+		}
+		if totalOwed > 0.01 {
+			owedBalances = append(owedBalances, models.CurrencyAmount{Currency: currency, Amount: totalOwed})
+		}
 	}
 
-	return totalNet, totalOwe, totalOwed, nil
+	return totalBalances, oweBalances, owedBalances, nil
 }
 
 func (r *expenseRepository) DeleteReceiptItems(ctx context.Context, expenseID string) error {
@@ -656,27 +720,28 @@ func (r *expenseRepository) GetGroupBalancesByUserID(ctx context.Context, userID
 	return result, nil
 }
 
-func (r *expenseRepository) GetGroupMemberBalances(ctx context.Context, groupID string) (map[string]float64, error) {
+func (r *expenseRepository) GetGroupMemberBalances(ctx context.Context, groupID string) (map[string]map[string]float64, error) {
 	query := `
 		WITH member_payments AS (
-			SELECT e.group_id, p.user_id, COALESCE(SUM(p.amount_paid), 0) as paid
+			SELECT e.currency, p.user_id, COALESCE(SUM(p.amount_paid), 0) as paid
 			FROM expense_payers p
 			JOIN expenses e ON e.id = p.expense_id
 			WHERE e.group_id = $1
-			GROUP BY e.group_id, p.user_id
+			GROUP BY e.currency, p.user_id
 		),
 		member_splits AS (
-			SELECT e.group_id, s.user_id, COALESCE(SUM(s.amount), 0) as owed
+			SELECT e.currency, s.user_id, COALESCE(SUM(s.amount), 0) as owed
 			FROM expense_splits s
 			JOIN expenses e ON e.id = s.expense_id
 			WHERE e.group_id = $1
-			GROUP BY e.group_id, s.user_id
+			GROUP BY e.currency, s.user_id
 		)
 		SELECT 
 			COALESCE(mp.user_id, ms.user_id) as user_id,
+			COALESCE(mp.currency, ms.currency) as currency,
 			COALESCE(mp.paid, 0) - COALESCE(ms.owed, 0) as balance
 		FROM member_payments mp
-		FULL OUTER JOIN member_splits ms ON mp.user_id = ms.user_id
+		FULL OUTER JOIN member_splits ms ON mp.user_id = ms.user_id AND mp.currency = ms.currency
 	`
 
 	rows, err := r.getQuerier().Query(ctx, query, groupID)
@@ -685,14 +750,17 @@ func (r *expenseRepository) GetGroupMemberBalances(ctx context.Context, groupID 
 	}
 	defer rows.Close()
 
-	result := make(map[string]float64)
+	result := make(map[string]map[string]float64)
 	for rows.Next() {
-		var userID string
+		var userID, currency string
 		var balance float64
-		if err := rows.Scan(&userID, &balance); err != nil {
+		if err := rows.Scan(&userID, &currency, &balance); err != nil {
 			return nil, fmt.Errorf("scanning member balance: %w", err)
 		}
-		result[userID] = balance
+		if result[userID] == nil {
+			result[userID] = make(map[string]float64)
+		}
+		result[userID][currency] = balance
 	}
 	return result, nil
 }

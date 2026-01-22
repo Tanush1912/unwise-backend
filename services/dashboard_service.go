@@ -40,7 +40,7 @@ func (s *dashboardService) GetDashboard(ctx context.Context, userID, email, name
 		return nil, apperrors.InternalError(fmt.Errorf("ensuring user exists: %w", err))
 	}
 
-	totalNet, totalOwe, totalOwed, err := s.expenseRepo.GetUserTotalBalance(ctx, userID)
+	totalBalances, oweBalances, owedBalances, err := s.expenseRepo.GetUserTotalBalance(ctx, userID)
 	if err != nil {
 		zap.L().Error("Failed to get user total balance", zap.String("user_id", userID), zap.Error(err))
 		return nil, apperrors.DatabaseError("getting user total balance", err)
@@ -113,10 +113,30 @@ func (s *dashboardService) GetDashboard(ctx context.Context, userID, email, name
 		})
 	}
 
+	var legacyNet, legacyOwe, legacyOwed float64
+	for _, b := range totalBalances {
+		if b.Currency == "INR" {
+			legacyNet = b.Amount
+			break
+		}
+	}
+	for _, b := range oweBalances {
+		if b.Currency == "INR" {
+			legacyOwe = b.Amount
+			break
+		}
+	}
+	for _, b := range owedBalances {
+		if b.Currency == "INR" {
+			legacyOwed = b.Amount
+			break
+		}
+	}
+
 	zap.L().Info("Dashboard data fetched successfully",
 		zap.String("user_id", userID),
 		zap.Int("num_groups", len(groups)),
-		zap.Float64("net_balance", totalNet))
+		zap.Int("num_currencies", len(totalBalances)))
 
 	return &models.DashboardResponse{
 		User: models.DashboardUserInfo{
@@ -125,9 +145,12 @@ func (s *dashboardService) GetDashboard(ctx context.Context, userID, email, name
 			AvatarURL: user.AvatarURL,
 		},
 		Metrics: models.DashboardMetrics{
-			TotalNetBalance: math.Round(totalNet*RoundingFactor) / RoundingFactor,
-			TotalYouOwe:     math.Round(totalOwe*RoundingFactor) / RoundingFactor,
-			TotalYouAreOwed: math.Round(totalOwed*RoundingFactor) / RoundingFactor,
+			TotalNetBalance: math.Round(legacyNet*RoundingFactor) / RoundingFactor,
+			TotalYouOwe:     math.Round(legacyOwe*RoundingFactor) / RoundingFactor,
+			TotalYouAreOwed: math.Round(legacyOwed*RoundingFactor) / RoundingFactor,
+			TotalBalances: totalBalances,
+			BalancesOwe:   oweBalances,
+			BalancesOwed:  owedBalances,
 		},
 		Groups:         groups,
 		RecentActivity: recentActivity,
