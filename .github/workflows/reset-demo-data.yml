@@ -1,0 +1,22 @@
+name: Reset Demo Data
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Every Monday at 6:00 AM UTC
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  reset-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Reset demo data
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: go run scripts/seed-demo/main.go

@@ -1,4 +1,4 @@
-.PHONY: run build test migrate-up migrate-down clean install-migrate seed migrate-force migrate-fix-dirty migrate-version migrate-reset
+.PHONY: run build test migrate-up migrate-down clean install-migrate seed seed-demo migrate-force migrate-fix-dirty migrate-version migrate-reset
 
 GOPATH := $(shell go env GOPATH)
 MIGRATE := $(GOPATH)/bin/migrate
@@ -103,4 +103,10 @@ seed:
 		exit 1; \
 	fi; \
 	go run scripts/seed/main.go
+
+seed-demo:
+	@if [ -f .env ]; then \
+		export $$(grep -v '^#' .env | xargs); \
+	fi; \
+	go run scripts/seed-demo/main.go
 
